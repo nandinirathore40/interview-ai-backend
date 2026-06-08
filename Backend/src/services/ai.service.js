@@ -7,56 +7,73 @@ const ai = new GoogleGenAI({
     apiKey: process.env.GOOGLE_GENAI_API_KEY
 })
 
-
+// Validation Schema
 const interviewReportSchema = z.object({
-    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job describe"),
+    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job description"),
+    title: z.string().describe("The title of the job for which the interview report is generated"),
     technicalQuestions: z.array(z.object({
         question: z.string().describe("The technical question can be asked in the interview"),
         intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Technical questions that can be asked in the interview along with their intention and how to answer them"),
-    behavioralQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Behavioral questions that can be asked in the interview along with their intention and how to answer them"),
+        answer: z.string().describe("How to answer this question brief")
+    })).describe("Technical questions that can be asked in the interview"),
     skillGaps: z.array(z.object({
         skill: z.string().describe("The skill which the candidate is lacking"),
-        severity: z.enum([ "low", "medium", "high" ]).describe("The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances")
-    })).describe("List of skill gaps in the candidate's profile along with their severity"),
-    preparationPlan: z.array(z.object({
-        day: z.number().describe("The day number in the preparation plan, starting from 1"),
-        focus: z.string().describe("The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc."),
-        tasks: z.array(z.string()).describe("List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.")
-    })).describe("A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively"),
-    title: z.string().describe("The title of the job for which the interview report is generated"),
+        severity: z.enum([ "low", "medium", "high" ]).describe("The severity of this skill gap")
+    })).describe("List of skill gaps")
 })
 
+// 1. GENERATE INTERVIEW REPORT FUNCTION
 async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
+    
+    // --- TEMPORARY MOCK BYPASS (Google 503 Server Error se bachne ke liye) ---
+    console.log("Bypassing AI call to avoid 503 Overload Error. Returning Mock Data...");
+    
+    return {
+        matchScore: 85,
+        title: "Software Developer Intern",
+        technicalQuestions: [
+            {
+                question: "Explain the Event Loop in Node.js and how it handles asynchronous operations.",
+                intention: "To assess the candidate's deep understanding of the Node.js runtime environment.",
+                answer: "The event loop offloads operations to the system kernel whenever possible. It executes phases like timers, I/O callbacks, poll, check, and close callbacks sequentially."
+            },
+            {
+                question: "What are the common strategies for implementing caching with Redis in a Node.js application?",
+                intention: "To evaluate candidate's knowledge of performance optimization.",
+                answer: "Common strategies include the Cache-Aside (Lazy Loading) pattern, where the app checks the cache first, then hits the DB and updates the cache if there is a miss."
+            }
+        ],
+        skillGaps: [
+            {
+                skill: "Redis Caching",
+                severity: "medium"
+            },
+            {
+                skill: "System Design Patterns",
+                severity: "low"
+            }
+        ]
+    };
 
-
+    /* // SERVER SAHI CHALNE PAR IS CODE KO UNCOMMENT KAR LENA:
     const prompt = `Generate an interview report for a candidate with the following details:
                         Resume: ${resume}
                         Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
-`
+                        Job Description: ${jobDescription}`
 
     const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash", 
         contents: prompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: zodToJsonSchema(interviewReportSchema),
         }
     })
-
     return JSON.parse(response.text)
-
-
+    */
 }
 
-
-
+// 2. GENERATE PDF BUFFER
 async function generatePdfFromHtml(htmlContent) {
     const browser = await puppeteer.launch()
     const page = await browser.newPage();
@@ -72,31 +89,24 @@ async function generatePdfFromHtml(htmlContent) {
     })
 
     await browser.close()
-
     return pdfBuffer
 }
 
+// 3. GENERATE RESUME PDF FUNCTION
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
 
     const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
+        html: z.string().describe("The HTML content of the resume")
     })
 
     const prompt = `Generate resume for a candidate with the following details:
                         Resume: ${resume}
                         Self Description: ${selfDescription}
                         Job Description: ${jobDescription}
-
-                        the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
-                        The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
-                        The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
-                        you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
-                        The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
-                        The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
-                    `
+                        The resume should be simple, professional, and max 1 page.`
 
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash", 
         contents: prompt,
         config: {
             responseMimeType: "application/json",
@@ -104,13 +114,9 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
         }
     })
 
-
     const jsonContent = JSON.parse(response.text)
-
     const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
-
     return pdfBuffer
-
 }
 
 module.exports = { generateInterviewReport, generateResumePdf }
